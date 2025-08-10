@@ -1,0 +1,507 @@
+# Hotel Reservation System in Java with File-Based Database
+
+Here's a comprehensive hotel reservation system that includes all the requested features using object-oriented principles and file-based persistence:
+
+```java
+import java.io.*;
+import java.nio.file.*;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+// Enum for room types
+enum RoomType {
+    STANDARD(100.0), DELUXE(150.0), SUITE(250.0), PRESIDENTIAL(500.0);
+
+    private final double basePrice;
+
+    RoomType(double basePrice) {
+        this.basePrice = basePrice;
+    }
+
+    public double getBasePrice() {
+        return basePrice;
+    }
+}
+
+// Enum for reservation status
+enum ReservationStatus {
+    CONFIRMED, CANCELLED, COMPLETED
+}
+
+class Room implements Serializable {
+    private final int roomNumber;
+    private final RoomType type;
+    private final List<LocalDate> bookedDates;
+
+    public Room(int roomNumber, RoomType type) {
+        this.roomNumber = roomNumber;
+        this.type = type;
+        this.bookedDates = new ArrayList<>();
+    }
+
+    public int getRoomNumber() { return roomNumber; }
+    public RoomType getType() { return type; }
+
+    public boolean isAvailable(LocalDate startDate, LocalDate endDate) {
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            if (bookedDates.contains(date)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public void bookDates(LocalDate startDate, LocalDate endDate) {
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            bookedDates.add(date);
+        }
+    }
+
+    public void cancelBooking(LocalDate startDate, LocalDate endDate) {
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            bookedDates.remove(date);
+        }
+    }
+
+    public boolean hasUpcomingReservation() {
+        LocalDate today = LocalDate.now();
+        return bookedDates.stream().anyMatch(date -> !date.isBefore(today));
+    }
+
+    @Override
+    public String toString() {
+        return String.format("Room %d (%s) - $%.2f per night", roomNumber, type, type.getBasePrice());
+    }
+}
+
+class Guest implements Serializable {
+    private final String name;
+    private final String email;
+    private final String phone;
+
+    public Guest(String name, String email, String phone) {
+        this.name = name;
+        this.email = email;
+        this.phone = phone;
+    }
+
+    public String getName() { return name; }
+    public String getEmail() { return email; }
+    public String getPhone() { return phone; }
+
+    @Override
+    public String toString() {
+        return String.format("%s | Email: %s | Phone: %s", name, email, phone);
+    }
+}
+
+class Reservation implements Serializable {
+    private static final AtomicInteger nextId = new AtomicInteger(1);
+
+    private final String reservationId;
+    private final Guest guest;
+    private final Room room;
+    private final LocalDate checkInDate;
+    private final LocalDate checkOutDate;
+    private ReservationStatus status;
+    private final double totalCost;
+    private final LocalDateTime bookingTime;
+
+    public Reservation(Guest guest, Room room, LocalDate checkInDate, LocalDate checkOutDate) {
+        this.reservationId = "RES-" + nextId.getAndIncrement();
+        this.guest = guest;
+        this.room = room;
+        this.checkInDate = checkInDate;
+        this.checkOutDate = checkOutDate;
+        this.status = ReservationStatus.CONFIRMED;
+        this.totalCost = calculateTotalCost();
+        this.bookingTime = LocalDateTime.now();
+    }
+
+    private double calculateTotalCost() {
+        long nights = checkInDate.until(checkOutDate).getDays();
+        return room.getType().getBasePrice() * nights;
+    }
+
+    public String getReservationId() { return reservationId; }
+    public Guest getGuest() { return guest; }
+    public Room getRoom() { return room; }
+    public LocalDate getCheckInDate() { return checkInDate; }
+    public LocalDate getCheckOutDate() { return checkOutDate; }
+    public ReservationStatus getStatus() { return status; }
+    public double getTotalCost() { return totalCost; }
+    public LocalDateTime getBookingTime() { return bookingTime; }
+
+    public void cancel() {
+        if (status == ReservationStatus.CONFIRMED && !checkInDate.isBefore(LocalDate.now())) {
+            status = ReservationStatus.CANCELLED;
+            room.cancelBooking(checkInDate, checkOutDate);
+        }
+    }
+
+    @Override
+    public String toString() {
+        return String.format(
+            "Reservation ID: %s\n" +
+            "Guest: %s\n" +
+            "Room: %s\n" +
+            "Dates: %s to %s (%d nights)\n" +
+            "Total Cost: $%.2f\n" +
+            "Status: %s\n" +
+            "Booked on: %s",
+            reservationId, guest, room, checkInDate, checkOutDate,
+            checkInDate.until(checkOutDate).getDays(), totalCost, status, bookingTime
+        );
+    }
+}
+
+class Payment implements Serializable {
+    private final String paymentId;
+    private final String reservationId;
+    private final double amount;
+    private final String paymentMethod;
+    private final LocalDateTime paymentTime;
+    private boolean refunded;
+
+    public Payment(String reservationId, double amount, String paymentMethod) {
+        this.paymentId = "PAY-" + System.currentTimeMillis();
+        this.reservationId = reservationId;
+        this.amount = amount;
+        this.paymentMethod = paymentMethod;
+        this.paymentTime = LocalDateTime.now();
+        this.refunded = false;
+    }
+
+    public void processRefund() {
+        refunded = true;
+    }
+
+    @Override
+    public String toString() {
+        return String.format(
+            "Payment ID: %s | For Reservation: %s\n" +
+            "Amount: $%.2f | Method: %s\n" +
+            "Processed on: %s | Status: %s",
+            paymentId, reservationId, amount, paymentMethod,
+            paymentTime, refunded ? "REFUNDED" : "PAID"
+        );
+    }
+}
+
+class Hotel implements Serializable {
+    private final String name;
+    private final List<Room> rooms;
+    private final List<Reservation> reservations;
+    private final List<Payment> payments;
+    private static final String DATA_FILE = "hotel_data.ser";
+
+    public Hotel(String name) {
+        this.name = name;
+        this.rooms = new ArrayList<>();
+        this.reservations = new ArrayList<>();
+        this.payments = new ArrayList<>();
+        initializeRooms();
+    }
+
+    private void initializeRooms() {
+        // Add rooms of different types
+        for (int i = 1; i <= 10; i++) rooms.add(new Room(100 + i, RoomType.STANDARD));
+        for (int i = 1; i <= 6; i++) rooms.add(new Room(200 + i, RoomType.DELUXE));
+        for (int i = 1; i <= 3; i++) rooms.add(new Room(300 + i, RoomType.SUITE));
+        rooms.add(new Room(401, RoomType.PRESIDENTIAL));
+    }
+
+    public List<Room> getAvailableRooms(LocalDate startDate, LocalDate endDate, RoomType type) {
+        List<Room> availableRooms = new ArrayList<>();
+        for (Room room : rooms) {
+            if ((type == null || room.getType() == type) && 
+                room.isAvailable(startDate, endDate)) {
+                availableRooms.add(room);
+            }
+        }
+        return availableRooms;
+    }
+
+    public Reservation makeReservation(Guest guest, Room room, LocalDate checkInDate, LocalDate checkOutDate,
+                                     String paymentMethod) {
+        if (!room.isAvailable(checkInDate, checkOutDate)) {
+            return null;
+        }
+
+        Reservation reservation = new Reservation(guest, room, checkInDate, checkOutDate);
+        room.bookDates(checkInDate, checkOutDate);
+        reservations.add(reservation);
+
+        // Process payment
+        Payment payment = new Payment(reservation.getReservationId(), 
+                                    reservation.getTotalCost(), 
+                                    paymentMethod);
+        payments.add(payment);
+
+        return reservation;
+    }
+
+    public boolean cancelReservation(String reservationId) {
+        Optional<Reservation> reservationOpt = reservations.stream()
+            .filter(r -> r.getReservationId().equals(reservationId))
+            .findFirst();
+
+        if (!reservationOpt.isPresent()) return false;
+
+        Reservation reservation = reservationOpt.get();
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) return false;
+
+        reservation.cancel();
+
+        // Process refund
+        payments.stream()
+            .filter(p -> p.reservationId.equals(reservationId))
+            .findFirst()
+            .ifPresent(Payment::processRefund);
+
+        return true;
+    }
+
+    public List<Reservation> getReservationsForGuest(String email) {
+        List<Reservation> guestReservations = new ArrayList<>();
+        for (Reservation reservation : reservations) {
+            if (reservation.getGuest().getEmail().equalsIgnoreCase(email)) {
+                guestReservations.add(reservation);
+            }
+        }
+        return guestReservations;
+    }
+
+    public Reservation findReservation(String reservationId) {
+        return reservations.stream()
+            .filter(r -> r.getReservationId().equals(reservationId))
+            .findFirst()
+            .orElse(null);
+    }
+
+    public void saveData() {
+        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(DATA_FILE))) {
+            out.writeObject(this);
+        } catch (IOException e) {
+            System.err.println("Failed to save hotel data: " + e.getMessage());
+        }
+    }
+
+    public static Hotel loadData() {
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(DATA_FILE))) {
+            return (Hotel) in.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            return new Hotel("Grand Hotel");
+        }
+    }
+}
+
+public class HotelReservationSystem {
+    private static final Scanner scanner = new Scanner(System.in);
+    private static Hotel hotel;
+
+    public static void main(String[] args) {
+        // Load existing data or create new hotel
+        hotel = Hotel.loadData();
+        Runtime.getRuntime().addShutdownHook(new Thread(hotel::saveData));
+
+        System.out.println("=== " + hotel.name + " Reservation System ===");
+
+        boolean exit = false;
+        while (!exit) {
+            System.out.println("\nMain Menu:");
+            System.out.println("1. Search Available Rooms");
+            System.out.println("2. Make a Reservation");
+            System.out.println("3. View/Cancel Reservation");
+            System.out.println("4. View All Room Types");
+            System.out.println("5. Exit");
+            System.out.print("Enter your choice: ");
+
+            try {
+                int choice = Integer.parseInt(scanner.nextLine());
+                switch (choice) {
+                    case 1: searchRooms(); break;
+                    case 2: makeReservation(); break;
+                    case 3: manageReservation(); break;
+                    case 4: displayRoomTypes(); break;
+                    case 5: exit = true; break;
+                    default: System.out.println("Invalid choice. Please try again.");
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("Please enter a valid number.");
+            }
+        }
+
+        System.out.println("Thank you for using our reservation system!");
+    }
+
+    private static void searchRooms() {
+        System.out.println("\n=== Search Available Rooms ===");
+        
+        LocalDate[] dates = getDatesFromUser();
+        if (dates == null) return;
+
+        System.out.println("\nRoom Types:");
+        for (RoomType type : RoomType.values()) {
+            System.out.printf("%-12s - Base Price: $%.2f per night%n", 
+                type, type.getBasePrice());
+        }
+
+        System.out.print("\nEnter room type to filter (leave blank for all): ");
+        String typeInput = scanner.nextLine().trim().toUpperCase();
+
+        RoomType selectedType = null;
+        if (!typeInput.isEmpty()) {
+            try {
+                selectedType = RoomType.valueOf(typeInput);
+            } catch (IllegalArgumentException e) {
+                System.out.println("Invalid room type. Showing all available rooms.");
+            }
+        }
+
+        List<Room> availableRooms = hotel.getAvailableRooms(dates[0], dates[1], selectedType);
+        
+        if (availableRooms.isEmpty()) {
+            System.out.println("No available rooms for the selected criteria.");
+            return;
+        }
+
+        System.out.println("\nAvailable Rooms:");
+        availableRooms.forEach(System.out::println);
+
+        long nights = dates[0].until(dates[1]).getDays();
+        System.out.printf("\nTotal nights: %d%n", nights);
+    }
+
+    private static void makeReservation() {
+        System.out.println("\n=== Make a Reservation ===");
+        System.out.println("First, provide your information:");
+
+        System.out.print("Full Name: ");
+        String name = scanner.nextLine().trim();
+
+        System.out.print("Email: ");
+        String email = scanner.nextLine().trim();
+
+        System.out.print("Phone Number: ");
+        String phone = scanner.nextLine().trim();
+
+        Guest guest = new Guest(name, email, phone);
+
+        LocalDate[] dates = getDatesFromUser();
+        if (dates == null) return;
+
+        System.out.println("\nAvailable Room Types:");
+        List<Room> availableRooms = hotel.getAvailableRooms(dates[0], dates[1], null);
+        if (availableRooms.isEmpty()) {
+            System.out.println("No rooms available for the selected dates.");
+            return;
+        }
+
+        // Group available rooms by type
+        Map<RoomType, List<Room>> roomsByType = new HashMap<>();
+        for (Room room : availableRooms) {
+            roomsByType.computeIfAbsent(room.getType(), k -> new ArrayList<>()).add(room);
+        }
+
+        // Display available room types with counts
+        System.out.println("\nAvailable Room Types:");
+        roomsByType.forEach((type, rooms) -> 
+            System.out.printf("%-12s - $%.2f/night - %d rooms available%n",
+                type, type.getBasePrice(), rooms.size()));
+
+        // Get room type selection
+        RoomType selectedType = null;
+        while (selectedType == null) {
+            System.out.print("\nEnter room type you want to book: ");
+            String typeInput = scanner.nextLine().trim().toUpperCase();
+            try {
+                selectedType = RoomType.valueOf(typeInput);
+                if (!roomsByType.containsKey(selectedType)) {
+                    System.out.println("No rooms of that type available. Please choose another.");
+                    selectedType = null;
+                }
+            } catch (IllegalArgumentException e) {
+                System.out.println("Invalid room type. Please try again.");
+            }
+        }
+
+        // Get payment method
+        System.out.print("\nEnter payment method (Credit/Debit/Cash): ");
+        String paymentMethod = scanner.nextLine().trim();
+
+        // Confirm booking
+        System.out.printf("\nReview your reservation:\n" +
+            "Name: %s\n" +
+            "Room Type: %s ($%.2f/night)\n" +
+            "Dates: %s to %s (%d nights)\n",
+            name, selectedType, selectedType.getBasePrice(),
+            dates[0], dates[1], dates[0].until(dates[1]).getDays());
+
+        System.out.print("\nConfirm booking? (Y/N): ");
+        if (!scanner.nextLine().equalsIgnoreCase("Y")) {
+            System.out.println("Reservation cancelled.");
+            return;
+        }
+
+        // Get the first available room of selected type
+        Room roomToBook = roomsByType.get(selectedType).get(0);
+        Reservation reservation = hotel.makeReservation(guest, roomToBook, dates[0], dates[1], paymentMethod);
+
+        if (reservation != null) {
+            System.out.println("\nReservation confirmed!");
+            System.out.println(reservation);
+        } else {
+            System.out.println("Failed to make reservation. Please try again.");
+        }
+    }
+
+    private static void manageReservation() {
+        System.out.println("\n=== Manage Reservation ===");
+        System.out.print("Enter your email address: ");
+        String email = scanner.nextLine().trim();
+
+        List<Reservation> guestReservations = hotel.getReservationsForGuest(email);
+        if (guestReservations.isEmpty()) {
+            System.out.println("No reservations found for this email.");
+            return;
+        }
+
+        System.out.println("\nYour Reservations:");
+        guestReservations.forEach(res -> {
+            System.out.printf("\n[%s] %s - %s | Status: %s%n",
+                res.getReservationId(),
+                res.getCheckInDate(),
+                res.getCheckOutDate(),
+                res.getStatus());
+        });
+
+        System.out.print("\nEnter reservation ID to view details or 'back' to return: ");
+        String resId = scanner.nextLine().trim();
+        if (resId.equalsIgnoreCase("back")) return;
+
+        Reservation res = hotel.findReservation(resId);
+        if (res == null || !res.getGuest().getEmail().equalsIgnoreCase(email)) {
+            System.out.println("Invalid reservation ID.");
+            return;
+        }
+
+        System.out.println("\nReservation Details:");
+        System.out.println(res);
+
+        if (res.getStatus() == ReservationStatus.CONFIRMED) {
+            System.out.print("\nWould you like to cancel this reservation? (Y/N): ");
+            if (scanner.nextLine().equalsIgnoreCase("Y")) {
+                if (hotel.cancelReservation(resId)) {
+                    System.out.println("Reservation cancelled successfully.");
+                } else {
+                    System.out.println("Could not cancel reservation. It may be already completed or cancelled.");
+                }
+            }
+        }
+    }
+
+    private static void displayRoomTypes() {
+        System.out.println("\n=== Room Types and Pricing ===");
+        System.out.printf("%-15s | %-10s | %-50);
