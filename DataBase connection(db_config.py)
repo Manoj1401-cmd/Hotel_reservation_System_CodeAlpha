@@ -1,0 +1,50 @@
+import mysql.connector
+from mysql.connector import Error
+import pandas as pd
+
+class DatabaseConnection:
+    def __init__(self):
+        self.host = 'localhost'
+        self.database = 'hotel_reservation_system'
+        self.user = 'root'
+        self.password = 'your_password'  # Change this
+        
+    def get_connection(self):
+        try:
+            connection = mysql.connector.connect(
+                host=self.host,
+                database=self.database,
+                user=self.user,
+                password=self.password
+            )
+            if connection.is_connected():
+                return connection
+        except Error as e:
+            print(f"Error: {e}")
+            return None
+    
+    def execute_query(self, query):
+        connection = self.get_connection()
+        if connection:
+            try:
+                cursor = connection.cursor()
+                cursor.execute(query)
+                connection.commit()
+                print("Query executed successfully")
+            except Error as e:
+                print(f"Error: {e}")
+            finally:
+                cursor.close()
+                connection.close()
+    
+    def fetch_data(self, query):
+        connection = self.get_connection()
+        if connection:
+            try:
+                df = pd.read_sql(query, connection)
+                return df
+            except Error as e:
+                print(f"Error: {e}")
+                return None
+            finally:
+                connection.close()
