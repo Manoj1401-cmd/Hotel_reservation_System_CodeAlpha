@@ -1,0 +1,49 @@
+hotel-reservation-system/
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/
+│   │   │       └── hotel/
+│   │   │           ├── HotelReservationApplication.java
+│   │   │           ├── config/
+│   │   │           │   ├── SecurityConfig.java
+│   │   │           │   └── EmailConfig.java
+│   │   │           ├── model/
+│   │   │           │   ├── User.java
+│   │   │           │   ├── Customer.java
+│   │   │           │   ├── RoomType.java
+│   │   │           │   ├── Room.java
+│   │   │           │   ├── Reservation.java
+│   │   │           │   ├── Payment.java
+│   │   │           │   └── Review.java
+│   │   │           ├── repository/
+│   │   │           │   ├── UserRepository.java
+│   │   │           │   ├── CustomerRepository.java
+│   │   │           │   ├── RoomRepository.java
+│   │   │           │   ├── RoomTypeRepository.java
+│   │   │           │   ├── ReservationRepository.java
+│   │   │           │   ├── PaymentRepository.java
+│   │   │           │   └── ReviewRepository.java
+│   │   │           ├── service/
+│   │   │           │   ├── UserService.java
+│   │   │           │   ├── RoomService.java
+│   │   │           │   ├── ReservationService.java
+│   │   │           │   ├── PaymentService.java
+│   │   │           │   └── EmailService.java
+│   │   │           ├── controller/
+│   │   │           │   ├── AuthController.java
+│   │   │           │   ├── RoomController.java
+│   │   │           │   ├── ReservationController.java
+│   │   │           │   └── PaymentController.java
+│   │   │           ├── dto/
+│   │   │           │   ├── LoginRequest.java
+│   │   │           │   ├── RegisterRequest.java
+│   │   │           │   ├── ReservationRequest.java
+│   │   │           │   └── PaymentRequest.java
+│   │   │           └── exception/
+│   │   │               ├── GlobalExceptionHandler.java
+│   │   │               └── ResourceNotFoundException.java
+│   │   └── resources/
+│   │       └── application.properties
+│   └── test/
+└── pom.xml
