@@ -1,6 +1,6 @@
 -- Create Database
 CREATE DATABASE hotel_reservation_system;
-USE hotel_reservation_system;
+USE hotel_reservation_system; 
 
 -- 1. Users Table
 CREATE TABLE users (
